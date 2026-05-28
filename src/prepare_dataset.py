@@ -138,9 +138,9 @@ def save_image(image: Image.Image, output_path: Path) -> None:
     image.save(output_path)
 
 
-def write_normalized_images(class_name: str, image_paths: list[Path], target_split_dir: Path, target_size: int, prefix: str | None = None) -> None:
-    for image_path in image_paths:
-        target_name = f"{image_path.stem}.png" if prefix is None else f"{prefix}{image_path.stem}.png"
+def write_normalized_images(class_name: str, image_paths: list[Path], target_split_dir: Path, target_size: int, prefix: str = "") -> None:
+    for index, image_path in enumerate(image_paths):
+        target_name = f"{prefix}{index:04d}_{image_path.stem}.png"
         output_path = target_split_dir / class_name / target_name
         save_image(load_normalized_image(image_path, target_size), output_path)
 
@@ -316,7 +316,7 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
 
     # Copy and normalize test as-is.
     for class_name, image_path in iter_split_images(test_dir):
-        write_normalized_images(class_name, [image_path], output_root / "test", target_size)
+        write_normalized_images(class_name, [image_path], output_root / "test", target_size, prefix="test_")
 
     # Read all train images by class.
     train_images_by_class: dict[str, list[Path]] = {class_name: [] for class_name in EXPECTED_CLASSES}
@@ -345,7 +345,7 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
         excluded_paths = set(selected_from_train[class_name])
         kept_images = [image_path for image_path in train_images if image_path not in excluded_paths]
 
-        write_normalized_images(class_name, kept_images, output_root / "train", target_size)
+        write_normalized_images(class_name, kept_images, output_root / "train", target_size, prefix="train_")
 
         additional_augmented = round(len(kept_images) * augmentation_ratio)
         if additional_augmented > 0 and kept_images:
@@ -364,7 +364,7 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
 
     # Copy existing validation images plus the sampled train images.
     for class_name, validation_images in validation_images_by_class.items():
-        write_normalized_images(class_name, validation_images, output_root / "validation", target_size)
+        write_normalized_images(class_name, validation_images, output_root / "validation", target_size, prefix="val_")
         write_normalized_images(class_name, selected_from_train[class_name], output_root / "validation", target_size, prefix="train_")
 
     after_counts, after_resolutions = collect_stats(output_root, target_size)

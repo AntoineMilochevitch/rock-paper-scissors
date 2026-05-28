@@ -1,0 +1,2 @@
+model_name,run_name,optimizer,epochs,best_epoch,best_val_loss,best_val_accuracy,test_loss,test_accuracy,precision_macro,recall_macro,f1_macro,timestamp,data_root,batch_size,learning_rate,weight_decay,dropout,use_batchnorm,kernel_size,channels,target_size
+baseline_cnn,model1_2026-05-28_12-00-51,adam,100,97,0.06544012463991604,0.9841269841269841,0.44199655837659796,0.8360215053763441,0.8900900900900902,0.836021505376344,0.8254619294025348,2026-05-28_12-00-51,data/rock-paper-scissors-prepared,32,0.001,0.0001,0.3,True,3,32-64-128,300

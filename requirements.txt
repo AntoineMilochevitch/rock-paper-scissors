@@ -3,4 +3,6 @@ matplotlib
 numpy
 pandas
 pillow
+scikit-learn
+torchvision
 torch
