@@ -129,4 +129,74 @@ Le script de préparation accepte quelques paramètres:
 python src/prepare_dataset.py --help
 ```
 
+## Modèles expérimentaux
+
+L'objectif du projet est de comparer plusieurs approches pour classifier les trois gestes `paper`, `rock` et `scissors`.
+
+Les modèles seront évalués avec les mêmes métriques: courbe de loss, accuracy, matrice de confusion, precision et recall. L'idée est de comparer chaque modèle à son meilleur niveau, avec early stopping et un nombre d'époques suffisant pour converger, sans en faire une variable principale de comparaison.
+
+### 1. Modèle from scratch de base
+
+Modèle simple servant de référence.
+
+- architecture peu profonde;
+- nombre de filtres modéré;
+- kernels principalement en `3x3`;
+- pooling simple et stable, typiquement `MaxPooling`;
+- activation `ReLU`;
+- Batch Normalization activée;
+- dropout léger;
+- optimiseur `Adam`.
+
+Objectif: obtenir un bon compromis entre temps d'entraînement et performance.
+
+### 2. Modèle from scratch plus performant
+
+Modèle plus profond et plus capacitaire.
+
+- plus de blocs convolutionnels;
+- davantage de filtres par couche;
+- kernels éventuellement plus variés, tout en restant raisonnables;
+- `MaxPooling` conservé;
+- Batch Normalization activée;
+- dropout plus marqué que sur le modèle de base;
+- optimiseur `Adam`.
+
+Objectif: maximiser la performance, quitte à augmenter le temps d'entraînement.
+
+### 3. Variantes from scratch ciblées
+
+Pour l'étude des hyperparamètres, certaines variantes pourront être comparées au modèle de base:
+
+- avec et sans Batch Normalization;
+- différents niveaux de dropout;
+- `Adam` vs `AdamW`;
+- architecture plus ou moins profonde.
+
+L'idée est de garder le pooling cohérent et de ne pas multiplier les différences dans un même modèle, afin d'identifier clairement l'effet de chaque choix.
+
+### 4. Modèle en transfert learning
+
+Un modèle préentraîné sera aussi testé pour servir de comparaison avec les modèles from scratch.
+
+- base convolutionnelle préentraînée sur un grand dataset;
+- tête de classification remplacée pour les 3 classes du projet;
+- phase 1: base gelée pour entraîner uniquement la tête;
+- phase 2: fine-tuning partiel si nécessaire;
+- mêmes métriques d'évaluation que les modèles from scratch.
+
+Objectif: mesurer le gain apporté par le transfert learning par rapport à un entraînement entièrement from scratch.
+
+### 5. Ce qui reste fixe entre les modèles
+
+Pour que la comparaison soit propre, les points suivants resteront identiques autant que possible:
+
+- même dataset préparé;
+- mêmes splits train / validation / test;
+- même prétraitement de base;
+- même stratégie d'early stopping;
+- mêmes métriques finales;
+- comparaison sur le meilleur checkpoint de validation.
+
+Les augmentations sont déjà intégrées dans la préparation du dataset pour la partie `train`, donc elles ne seront pas re-testées comme variable principale dans cette phase.
 
