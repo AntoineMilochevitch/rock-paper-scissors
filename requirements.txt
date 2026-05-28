@@ -1,0 +1,6 @@
+kagglehub
+matplotlib
+numpy
+pandas
+pillow
+torch
