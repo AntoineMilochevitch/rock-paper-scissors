@@ -15,8 +15,7 @@ from matplotlib import pyplot as plt
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
 EXPECTED_SPLITS = ("train", "test", "validation")
 EXPECTED_CLASSES = ("paper", "rock", "scissors")
-DEFAULT_VALIDATION_RATIO = 0.10
-DEFAULT_AUGMENTATION_RATIO = 0.20
+DEFAULT_AUGMENTATION_RATIO = 0.40
 DEFAULT_TARGET_SIZE = 300
 DEFAULT_RANDOM_SEED = 42
 
@@ -91,15 +90,18 @@ def zoom_image(image: Image.Image, zoom_factor: float, target_size: int) -> Imag
     return canvas
 
 
-def augment_image(image: Image.Image, rng: Random) -> tuple[Image.Image, dict[str, float]]:
+def augment_image(image: Image.Image, rng: Random) -> tuple[Image.Image, dict]:
     augmented = image.copy()
     augmentation_params = {
+        "flip": rng.random() < 0.5,
         "rotation": rng.uniform(-18.0, 18.0),
         "zoom": rng.uniform(0.85, 1.15),
         "brightness": rng.uniform(0.80, 1.20),
         "contrast": rng.uniform(0.80, 1.20),
     }
 
+    if augmentation_params["flip"]:
+        augmented = augmented.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     augmented = augmented.rotate(
         augmentation_params["rotation"],
         resample=Image.Resampling.BICUBIC,
@@ -221,21 +223,22 @@ def plot_resolution_comparison(report_dir: Path, before_resolutions: Counter[tup
     plt.close(fig)
 
 
-def plot_augmentation_parameters(report_dir: Path, augmentation_records: list[dict[str, float]]) -> None:
+def plot_augmentation_parameters(report_dir: Path, augmentation_records: list[dict]) -> None:
     if not augmentation_records:
         return
 
+    flips = [int(record["flip"]) for record in augmentation_records]
     rotations = [record["rotation"] for record in augmentation_records]
     zooms = [record["zoom"] for record in augmentation_records]
     brightness = [record["brightness"] for record in augmentation_records]
     contrast = [record["contrast"] for record in augmentation_records]
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 8))
     hist_specs = [
         (axes[0, 0], rotations, "Rotation angles", "Angle (degrees)"),
         (axes[0, 1], zooms, "Zoom factors", "Zoom factor"),
-        (axes[1, 0], brightness, "Brightness factors", "Brightness factor"),
-        (axes[1, 1], contrast, "Contrast factors", "Contrast factor"),
+        (axes[0, 2], brightness, "Brightness factors", "Brightness factor"),
+        (axes[1, 0], contrast, "Contrast factors", "Contrast factor"),
     ]
 
     for axis, values, title, xlabel in hist_specs:
@@ -245,13 +248,19 @@ def plot_augmentation_parameters(report_dir: Path, augmentation_records: list[di
         axis.set_ylabel("Count")
         axis.grid(axis="y", alpha=0.25)
 
+    axes[1, 1].bar(["no flip", "flip"], [flips.count(0), flips.count(1)], color=["#3b82f6", "#f59e0b"])
+    axes[1, 1].set_title("Horizontal flips")
+    axes[1, 1].set_ylabel("Count")
+    axes[1, 1].grid(axis="y", alpha=0.25)
+    axes[1, 2].set_visible(False)
+
     fig.suptitle("Distribution of augmentation parameters")
     fig.tight_layout()
     fig.savefig(report_dir / "augmentation_parameters.png", dpi=160)
     plt.close(fig)
 
 
-def plot_sample_preprocessing_comparison(report_dir: Path, sample_pairs: dict[str, tuple[Path, Path, dict[str, float]]]) -> None:
+def plot_sample_preprocessing_comparison(report_dir: Path, sample_pairs: dict[str, tuple[Path, Path, dict]]) -> None:
     available_classes = [class_name for class_name in EXPECTED_CLASSES if class_name in sample_pairs]
     if not available_classes:
         return
@@ -271,8 +280,9 @@ def plot_sample_preprocessing_comparison(report_dir: Path, sample_pairs: dict[st
 
         with Image.open(augmented_path) as augmented_image:
             axes[row_index][1].imshow(augmented_image)
+            flip_str = "flip" if params.get("flip") else "no flip"
             axes[row_index][1].set_title(
-                f"{class_name} augmented\nrot={params['rotation']:.1f}, zoom={params['zoom']:.2f}, br={params['brightness']:.2f}, ct={params['contrast']:.2f}"
+                f"{class_name} augmented\n{flip_str}, rot={params['rotation']:.1f}, zoom={params['zoom']:.2f}\nbr={params['brightness']:.2f}, ct={params['contrast']:.2f}"
             )
             axes[row_index][1].axis("off")
 
@@ -297,7 +307,7 @@ def copy_classified_images(class_name: str, image_paths: list[Path], target_spli
         shutil.copy2(image_path, target_dir / target_name)
 
 
-def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: Path, validation_ratio: float, augmentation_ratio: float, target_size: int, seed: int) -> None:
+def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: Path, augmentation_ratio: float, target_size: int, seed: int) -> None:
     train_dir = source_root / "train"
     test_dir = source_root / "test"
     validation_dir = source_root / "validation"
@@ -311,8 +321,8 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
     before_counts, before_resolutions = collect_stats(source_root, target_size=0)
 
     random = Random(seed)
-    augmentation_records: list[dict[str, float]] = []
-    sample_pairs: dict[str, tuple[Path, Path, dict[str, float]]] = {}
+    augmentation_records: list[dict] = []
+    sample_pairs: dict[str, tuple[Path, Path, dict]] = {}
 
     # Copy and normalize test as-is.
     for class_name, image_path in iter_split_images(test_dir):
@@ -323,33 +333,14 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
     for class_name, image_path in iter_split_images(train_dir):
         train_images_by_class[class_name].append(image_path)
 
-    # Read existing validation images and normalize them into class folders.
-    validation_images_by_class: dict[str, list[Path]] = {class_name: [] for class_name in EXPECTED_CLASSES}
-    for class_name, image_path in iter_split_images(validation_dir):
-        validation_images_by_class[class_name].append(image_path)
-
-    selected_from_train: dict[str, list[Path]] = {class_name: [] for class_name in EXPECTED_CLASSES}
-
-    for class_name in EXPECTED_CLASSES:
-        train_images = train_images_by_class[class_name]
-        target_validation_count = max(len(validation_images_by_class[class_name]), round(len(train_images) * validation_ratio))
-        additional_needed = max(0, target_validation_count - len(validation_images_by_class[class_name]))
-
-        if additional_needed > 0:
-            selected_from_train[class_name] = random.sample(train_images, additional_needed)
-        else:
-            selected_from_train[class_name] = []
-
-    # Copy the new train split, excluding the sampled validation images.
+    # Copy all training images and generate offline augmented copies.
+    # No training images are moved to validation — the full training set is preserved.
     for class_name, train_images in train_images_by_class.items():
-        excluded_paths = set(selected_from_train[class_name])
-        kept_images = [image_path for image_path in train_images if image_path not in excluded_paths]
+        write_normalized_images(class_name, train_images, output_root / "train", target_size, prefix="train_")
 
-        write_normalized_images(class_name, kept_images, output_root / "train", target_size, prefix="train_")
-
-        additional_augmented = round(len(kept_images) * augmentation_ratio)
-        if additional_augmented > 0 and kept_images:
-            chosen_sources = random.choices(kept_images, k=additional_augmented)
+        additional_augmented = round(len(train_images) * augmentation_ratio)
+        if additional_augmented > 0 and train_images:
+            chosen_sources = random.choices(train_images, k=additional_augmented)
             for index, source_path in enumerate(chosen_sources):
                 base_image = load_normalized_image(source_path, target_size)
                 augmented_image, params = augment_image(base_image, random)
@@ -362,10 +353,18 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
                 if class_name not in sample_pairs:
                     sample_pairs[class_name] = (source_path, augmented_path, params)
 
-    # Copy existing validation images plus the sampled train images.
+    # Copy the original validation split and add horizontally flipped copies.
+    # Flipping doubles the validation set without introducing training-distribution bias.
+    validation_images_by_class: dict[str, list[Path]] = {class_name: [] for class_name in EXPECTED_CLASSES}
+    for class_name, image_path in iter_split_images(validation_dir):
+        validation_images_by_class[class_name].append(image_path)
+
     for class_name, validation_images in validation_images_by_class.items():
         write_normalized_images(class_name, validation_images, output_root / "validation", target_size, prefix="val_")
-        write_normalized_images(class_name, selected_from_train[class_name], output_root / "validation", target_size, prefix="train_")
+        for image_path in validation_images:
+            base = load_normalized_image(image_path, target_size)
+            flipped = base.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+            save_image(flipped, output_root / "validation" / class_name / f"flip_{image_path.stem}.png")
 
     after_counts, after_resolutions = collect_stats(output_root, target_size)
 
@@ -377,10 +376,10 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
 
     print(f"Prepared dataset written to: {output_root}")
     print(f"Preprocessing report written to: {report_root}")
-    print("Validation was rebuilt from the original validation split plus a stratified sample from train.")
-    print("Training images selected for validation were removed from the new train split to avoid data leakage.")
+    print("Validation uses the original validation split with horizontally flipped copies added.")
+    print("No training images are moved to validation — the full training set is preserved.")
     print(f"All images were resized to {target_size}x{target_size} before saving.")
-    print(f"Additional train augmentation ratio: {augmentation_ratio:.2f}")
+    print(f"Offline augmentation ratio: {augmentation_ratio:.2f} (includes random horizontal flips, rotation, zoom, brightness, contrast)")
     print()
 
     for split_name, counts in after_counts.items():
@@ -405,7 +404,7 @@ def build_rebalanced_dataset(source_root: Path, output_root: Path, report_root: 
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare a balanced Rock Paper Scissors dataset with preprocessing for CNN training.")
+    parser = argparse.ArgumentParser(description="Prepare a Rock Paper Scissors dataset with preprocessing for CNN training.")
     parser.add_argument(
         "--source-root",
         type=Path,
@@ -419,22 +418,16 @@ def parse_args() -> argparse.Namespace:
         help="Path where the prepared dataset will be written.",
     )
     parser.add_argument(
-        "--validation-ratio",
-        type=float,
-        default=DEFAULT_VALIDATION_RATIO,
-        help="Target validation ratio computed from the train split, per class.",
-    )
-    parser.add_argument(
         "--seed",
         type=int,
         default=DEFAULT_RANDOM_SEED,
-        help="Random seed used to select train images for validation.",
+        help="Random seed for augmentation sampling.",
     )
     parser.add_argument(
         "--augment-ratio",
         type=float,
         default=DEFAULT_AUGMENTATION_RATIO,
-        help="Number of augmented train images to generate per class, as a ratio of the kept train split.",
+        help="Ratio of offline augmented copies to generate per training image.",
     )
     parser.add_argument(
         "--target-size",
@@ -457,7 +450,6 @@ def main() -> None:
         args.source_root,
         args.output_root,
         args.report_root,
-        args.validation_ratio,
         args.augment_ratio,
         args.target_size,
         args.seed,

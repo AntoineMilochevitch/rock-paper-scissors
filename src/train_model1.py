@@ -79,13 +79,21 @@ def train_model() -> None:
 
     train_transform = transforms.Compose([
         transforms.Resize((TARGET_SIZE, TARGET_SIZE)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=10, fill=(255, 255, 255)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean.tolist(), std=std.tolist()),
+    ])
+
+    eval_transform = transforms.Compose([
+        transforms.Resize((TARGET_SIZE, TARGET_SIZE)),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean.tolist(), std=std.tolist()),
     ])
 
     train_dataset = datasets.ImageFolder(DATA_ROOT / "train", transform=train_transform)
-    validation_dataset = datasets.ImageFolder(DATA_ROOT / "validation", transform=train_transform)
-    test_dataset = datasets.ImageFolder(DATA_ROOT / "test", transform=train_transform)
+    validation_dataset = datasets.ImageFolder(DATA_ROOT / "validation", transform=eval_transform)
+    test_dataset = datasets.ImageFolder(DATA_ROOT / "test", transform=eval_transform)
     class_names = train_dataset.classes
 
     pin_memory = DEVICE.type == "cuda"
