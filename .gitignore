@@ -2,3 +2,4 @@ data/
 venv/
 .venv/
 src/__pycache__/
+reports/experiments/model3_resnet/model3_resnet_2026-06-11_11-39-38/best_model.pt
