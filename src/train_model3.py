@@ -27,7 +27,7 @@ from experiment_utils import (
 DATA_ROOT = Path("data/rock-paper-scissors-prepared")
 OUTPUT_ROOT = Path("reports/experiments/model3_resnet")
 RESULTS_CSV = Path("reports/experiments/results.csv")
-TARGET_SIZE = 224
+TARGET_SIZE = 300
 EPOCHS = 50
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
